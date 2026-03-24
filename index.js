@@ -11,7 +11,7 @@ const RETRY_DELAY_MS = 1000
 
 function log(...args) {
   // MCP uses stdout for protocol — all logging MUST go to stderr
-  console.error('[oneeditor-mcp]', ...args)
+  console.error('[one-editor-mcp]', ...args)
 }
 
 async function fetchWithRetry(url, options, retries = MAX_RETRIES) {
@@ -65,7 +65,7 @@ async function askUser(question, options) {
 // --- MCP Server Setup ---
 
 const server = new Server(
-  { name: 'oneeditor-claude-code-mcp', version: '1.0.0' },
+  { name: 'one-editor-mcp', version: '1.0.0' },
   { capabilities: { tools: {} } }
 )
 

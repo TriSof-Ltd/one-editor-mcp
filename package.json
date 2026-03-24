@@ -1,5 +1,5 @@
 {
-  "name": "oneeditor-claude-code-mcp",
+  "name": "one-editor-mcp",
   "version": "1.0.0",
   "description": "MCP server for One Editor — enables Claude Code to ask users questions via the web chat UI",
   "type": "module",
