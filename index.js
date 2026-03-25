@@ -50,6 +50,10 @@ async function askUser(question, options) {
     }
 
     const data = await res.json()
+    if (!data.answer && data.answer !== '') {
+      log('Bridge returned response with no answer field:', JSON.stringify(data))
+      return { error: true, message: 'The user response was empty. Try asking the question again.' }
+    }
     log('User answered:', data.answer)
     return { error: false, answer: data.answer }
   } catch (err) {
