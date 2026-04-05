@@ -66,6 +66,28 @@ async function askUser(question, options) {
   }
 }
 
+async function setSecret(keyName, value) {
+  log('Setting secret:', keyName)
+  try {
+    const res = await fetchWithRetry(`${BRIDGE_URL}/mcp/set_secret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key_name: keyName, value }),
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'unknown error')
+      return { error: true, message: `Failed to save secret (${res.status}): ${text}` }
+    }
+    const data = await res.json()
+    log('Secret saved:', keyName)
+    return { error: false, data }
+  } catch (err) {
+    log('Error setting secret:', err.message)
+    return { error: true, message: `Failed to save secret: ${err.message}` }
+  }
+}
+
 // --- MCP Server Setup ---
 
 const server = new Server(
@@ -98,6 +120,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ['question']
       }
+    },
+    {
+      name: 'set_secret',
+      description: [
+        'Save a secret (API key, token, credential) to the project\'s secrets store.',
+        'The secret is automatically synced to the dev server .env and injected into production on deploy.',
+        'Use this whenever the user provides an API key, token, or any sensitive credential.',
+        'The key name should be UPPER_SNAKE_CASE (e.g. STRIPE_SECRET_KEY, OPENAI_API_KEY).',
+      ].join(' '),
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key_name: {
+            type: 'string',
+            description: 'The secret key name in UPPER_SNAKE_CASE (e.g. STRIPE_SECRET_KEY)'
+          },
+          value: {
+            type: 'string',
+            description: 'The secret value'
+          }
+        },
+        required: ['key_name', 'value']
+      }
     }
   ]
 }))
@@ -105,34 +150,47 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params
 
-  if (name !== 'ask_user') {
-    return {
-      content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-      isError: true,
+  if (name === 'ask_user') {
+    const question = args?.question
+    if (!question || typeof question !== 'string') {
+      return {
+        content: [{ type: 'text', text: 'Error: "question" parameter is required and must be a string.' }],
+        isError: true,
+      }
     }
+
+    const options = Array.isArray(args?.options) ? args.options.filter(o => typeof o === 'string') : []
+    const result = await askUser(question, options)
+
+    if (result.error) {
+      return { content: [{ type: 'text', text: result.message }], isError: true }
+    }
+    return { content: [{ type: 'text', text: `The user responded: ${result.answer}` }] }
   }
 
-  const question = args?.question
-  if (!question || typeof question !== 'string') {
-    return {
-      content: [{ type: 'text', text: 'Error: "question" parameter is required and must be a string.' }],
-      isError: true,
+  if (name === 'set_secret') {
+    const keyName = args?.key_name
+    const value = args?.value
+    if (!keyName || typeof keyName !== 'string') {
+      return { content: [{ type: 'text', text: 'Error: "key_name" is required.' }], isError: true }
     }
-  }
-
-  const options = Array.isArray(args?.options) ? args.options.filter(o => typeof o === 'string') : []
-
-  const result = await askUser(question, options)
-
-  if (result.error) {
-    return {
-      content: [{ type: 'text', text: result.message }],
-      isError: true,
+    if (!value || typeof value !== 'string') {
+      return { content: [{ type: 'text', text: 'Error: "value" is required.' }], isError: true }
     }
+    if (!/^[A-Z][A-Z0-9_]*$/.test(keyName)) {
+      return { content: [{ type: 'text', text: 'Error: key_name must be UPPER_SNAKE_CASE.' }], isError: true }
+    }
+
+    const result = await setSecret(keyName, value)
+    if (result.error) {
+      return { content: [{ type: 'text', text: result.message }], isError: true }
+    }
+    return { content: [{ type: 'text', text: `Secret "${keyName}" saved successfully. It is now available in server/.env and will be injected into production on deploy.` }] }
   }
 
   return {
-    content: [{ type: 'text', text: `The user responded: ${result.answer}` }],
+    content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+    isError: true,
   }
 })
 
